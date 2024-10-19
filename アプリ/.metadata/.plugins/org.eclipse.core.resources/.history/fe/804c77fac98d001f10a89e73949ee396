@@ -1,0 +1,68 @@
+import java.awt.Graphics;
+import java.awt.Image;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+
+import javax.imageio.ImageIO;
+import javax.swing.JFrame;
+
+public class Main {
+    public static void main(String[] args) {
+        SetWindow window = new SetWindow("Flappy Bird");
+        window.loadBackground("bin/img/backGround.png"); // 背景画像のパスを指定
+        window.loadForeground("bin/img/map.png"); // フロント画像のパスを指定
+    }
+
+    static class SetWindow extends JFrame {
+        private BufferedImage backgroundImage;
+        private BufferedImage foregroundImage;
+
+        SetWindow(String name) {
+            super(name);
+            setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            setUndecorated(true); // ウィンドウの装飾を取り除く
+            setExtendedState(JFrame.MAXIMIZED_BOTH); // フルスクリーンにする
+            setVisible(true);
+            setLocationRelativeTo(null); // ウィンドウを画面の中央に配置
+        }
+
+        void loadBackground(String imagePath) {
+            try {
+                backgroundImage = ImageIO.read(new java.io.File(imagePath)); // 背景画像を読み込む
+                repaint(); // 再描画
+            } catch (IOException e) {
+                System.err.println("Error loading background image: " + imagePath);
+                e.printStackTrace();
+            }
+        }
+
+        void loadForeground(String imagePath) {
+            try {
+                foregroundImage = ImageIO.read(new java.io.File(imagePath)); // フロント画像を読み込む
+                repaint(); // 再描画
+            } catch (IOException e) {
+                System.err.println("Error loading foreground image: " + imagePath);
+                e.printStackTrace();
+            }
+        }
+
+        @Override
+        public void paint(Graphics g) {
+            super.paint(g);
+            if (backgroundImage != null) {
+                // 背景画像をウィンドウサイズにリサイズ
+                Image resizedBackground = backgroundImage.getScaledInstance(getWidth(), getHeight(), Image.SCALE_SMOOTH);
+                g.drawImage(resizedBackground, 0, 0, this); // 背景画像を描画
+            }
+            if (foregroundImage != null) {
+                // フロント画像のY座標を背景の下に合わせる
+                int y = getHeight() - foregroundImage.getHeight();
+                g.drawImage(foregroundImage, 0, y, this); // フロント画像を描画
+
+                // ウィンドウのサイズをフロント画像の高さに合わせる
+                setSize(getWidth(), foregroundImage.getHeight());
+                setLocationRelativeTo(null); // 位置を再設定して中央に配置
+            }
+        }
+    }
+}

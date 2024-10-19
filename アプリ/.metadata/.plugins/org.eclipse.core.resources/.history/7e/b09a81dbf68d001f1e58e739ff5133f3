@@ -1,0 +1,31 @@
+import java.awt.Graphics;
+import java.awt.image.BufferedImage;
+
+public class Player 
+{
+    static void drawPlayer(Graphics g, BufferedImage playerImage, int windowHeight) 
+    {
+        // プレイヤー画像を四分割して描画
+        int playerWidth = 16;  // プレイヤーの幅
+        int playerHeight = 16; // プレイヤーの高さ
+
+        // 各部分の位置を計算して描画
+        for (int i = 0; i < 2; i++) // 行数を2に
+        { 
+            for (int j = 0; j < 2; j++) // 列数を2に
+            { 
+                int srcX = j * playerWidth; // 元画像内のX座標
+                int srcY = i * playerHeight; // 元画像内のY座標
+                int destX = 0; // 描画位置Xを左端に
+                int destY = (windowHeight - (playerHeight * 2)) / 2 + i * playerHeight; // 描画位置Yを中央に
+
+                // 各部分を描画
+                g.drawImage(playerImage, destX, destY, 
+                            destX + playerWidth, destY + playerHeight, 
+                            srcX, srcY, 
+                            srcX + playerWidth, srcY + playerHeight, 
+                            null);
+            }
+        }
+    }
+}

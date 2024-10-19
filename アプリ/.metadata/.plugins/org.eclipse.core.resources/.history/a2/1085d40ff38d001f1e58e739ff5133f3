@@ -1,0 +1,40 @@
+import java.awt.Graphics;
+import java.awt.image.BufferedImage;
+
+public class player
+{
+    private BufferedImage playerImage; // プレイヤー画像
+    private int width;  // 幅
+    private int height; // 高さ
+
+    // コンストラクタ
+    public player(BufferedImage image, int width, int height) 
+    {
+        this.playerImage = image;
+        this.width = width;
+        this.height = height;
+    }
+
+    // 描画メソッド
+    public void draw(Graphics g, int windowHeight) 
+    {
+        // 各部分の位置を計算して描画
+        for (int i = 0; i < 2; i++) // 行数を2に
+        { 
+            for (int j = 0; j < 2; j++) // 列数を2に
+            { 
+                int srcX = j * width; // 元画像内のX座標
+                int srcY = i * height; // 元画像内のY座標
+                int destX = 0; // 描画位置Xを左端に
+                int destY = (windowHeight - (height * 2)) / 2 + i * height; // 描画位置Yを中央に
+
+                // 各部分を描画
+                g.drawImage(playerImage, destX, destY, 
+                            destX + width, destY + height, 
+                            srcX, srcY, 
+                            srcX + width, srcY + height, 
+                            null);
+            }
+        }
+    }
+}

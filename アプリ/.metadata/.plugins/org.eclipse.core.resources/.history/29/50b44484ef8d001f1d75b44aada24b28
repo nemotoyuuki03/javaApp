@@ -1,0 +1,119 @@
+import java.awt.Graphics;
+import java.awt.Image;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+
+import javax.imageio.ImageIO;
+import javax.swing.JFrame;
+
+public class Main 
+{
+    public static void main(String[] args) 
+    {
+        SetWindow window = new SetWindow("Flappy Bird");
+        window.loadBackground("bin/img/backGround.png"); // 背景画像のパス
+        window.loadForeground("bin/img/map.png"); // フロント画像のパス
+        window.loadPlayer("bin/img/Bird.png"); // プレイヤー画像のパス
+    }
+
+    static class SetWindow extends JFrame 
+    {
+        private BufferedImage backgroundImage;
+        private BufferedImage foregroundImage;
+        private BufferedImage playerImage; // プレイヤー画像
+
+        SetWindow(String name) 
+        {
+            super(name);
+            setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            setUndecorated(true); // ウィンドウの装飾を取り除く
+            setExtendedState(JFrame.MAXIMIZED_BOTH); // フルスクリーンにする
+            setVisible(true);
+            setLocationRelativeTo(null); // ウィンドウを画面の中央に配置
+        }
+
+        void loadBackground(String imagePath) {
+            try {
+                backgroundImage = ImageIO.read(new java.io.File(imagePath));
+                repaint(); // 再描画
+            } catch (IOException e) {
+                System.err.println("背景画像の読み込みエラー: " + imagePath);
+                e.printStackTrace();
+            }
+        }
+
+        void loadForeground(String imagePath) 
+        {
+            try 
+            {
+                foregroundImage = ImageIO.read(new java.io.File(imagePath));
+                repaint(); // 再描画
+            } 
+            catch (IOException e) 
+            {
+                System.err.println("フロント画像の読み込みエラー: " + imagePath);
+                e.printStackTrace();
+            }
+        }
+
+        void loadPlayer(String imagePath)
+        {
+            try
+            {
+                playerImage = ImageIO.read(new java.io.File(imagePath));
+                repaint(); // 再描画
+            } catch (IOException e) 
+            {
+                System.err.println("プレイヤー画像の読み込みエラー: " + imagePath);
+                e.printStackTrace();
+            }
+        }
+
+        @Override
+        public void paint(Graphics g) 
+        {
+            super.paint(g);
+            if (backgroundImage != null) 
+            {
+                // 背景画像をウィンドウサイズにリサイズ
+                Image resizedBackground = backgroundImage.getScaledInstance(getWidth(), getHeight(), Image.SCALE_SMOOTH);
+                g.drawImage(resizedBackground, 0, 0, this); // 背景画像を描画
+            }
+            if (foregroundImage != null) 
+            {
+                // フロント画像を下に描画
+                int y = getHeight() - foregroundImage.getHeight();
+                g.drawImage(foregroundImage, 0, y, this); // フロント画像を描画
+
+                // ウィンドウのサイズをフロント画像の高さに合わせる
+                setSize(getWidth(), foregroundImage.getHeight());
+                setLocationRelativeTo(null); // 位置を再設定して中央に配置
+            }
+            if (playerImage != null) 
+            {
+                // プレイヤー画像を四分割して描画
+                int playerWidth = 16;  // プレイヤーの幅
+                int playerHeight = 16; // プレイヤーの高さ
+
+                // 各部分の位置を計算して描画
+                for (int i = 0; i < 2; i++) // 行数を2に変更
+                { 
+                    for (int j = 0; j < 2; j++) // 列数を2に変更
+                    { 
+                        int srcX = j * playerWidth; // 元画像内のX座標
+                        int srcY = i * playerHeight; // 元画像内のY座標
+                        int destX = (getWidth() - playerWidth * 2) + j * playerWidth; // 描画位置X
+                        int destY = (getHeight() - playerHeight) / 4 + i * playerHeight; // 描画位置Y
+
+                        // 各部分を描画
+                        g.drawImage(playerImage, destX, destY, 
+                                    destX + playerWidth, destY + playerHeight, 
+                                    srcX, srcY, 
+                                    srcX + playerWidth, srcY + playerHeight, 
+                                    this);
+                    }
+                }
+            }
+        }
+    }
+}

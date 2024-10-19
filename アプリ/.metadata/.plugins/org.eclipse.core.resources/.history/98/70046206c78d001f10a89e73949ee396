@@ -1,0 +1,44 @@
+import java.awt.Graphics;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import javax.imageio.ImageIO;
+import javax.swing.JFrame;
+
+public class Main {
+    public static void main(String[] args) {
+        SetWindow window = new SetWindow("Flappy Bird");
+        window.loadImage("bin/img/map.png"); // 画像のパスを指定
+    }
+
+    static class SetWindow extends JFrame {
+        private BufferedImage image;
+
+        SetWindow(String name) {
+            super(name);
+            setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            setUndecorated(true); // ウィンドウの装飾を取り除く
+            setVisible(true);
+        }
+
+        void loadImage(String imagePath) {
+            try {
+                image = ImageIO.read(new java.io.File(imagePath)); // 画像を読み込む
+                setExtendedState(JFrame.MAXIMIZED_BOTH); // フルスクリーンにする
+                setSize(getWidth(), image.getHeight()); // Y軸に合わせてサイズを変更
+                setLocationRelativeTo(null); // ウィンドウを中央に配置
+                repaint(); // 再描画
+            } catch (IOException e) {
+                System.err.println("Error loading image: " + imagePath);
+                e.printStackTrace();
+            }
+        }
+
+        @Override
+        public void paint(Graphics g) {
+            super.paint(g);
+            if (image != null) {
+                g.drawImage(image, 0, 0, this); // 画像を左上に描画
+            }
+        }
+    }
+}
