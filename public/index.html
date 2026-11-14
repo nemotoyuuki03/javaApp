@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang='ja'>
+  <head>
+    <meta charset='UTF-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+    <title>Chat App</title>
+    <link rel='stylesheet' href='/style.css' />
+  </head>
+  <body>
+    <div class='page-bg'></div>
+    <main class='app-shell'>
+      <section id='login-panel' class='panel login-panel'>
+        <div class='brand-block'>
+          <div class='brand-badge'>C</div>
+          <div>
+            <p class='eyebrow'>Realtime Chat</p>
+            <h1>チャットアプリ</h1>
+          </div>
+        </div>
+
+        <form id='login-form' class='login-form'>
+          <div class='field-group'>
+            <label for='username'>ユーザー名</label>
+            <input id='username' name='username' type='text' placeholder='例: admin' autocomplete='username' required />
+          </div>
+
+          <div class='field-group'>
+            <label for='password'>パスワード</label>
+            <input id='password' name='password' type='password' placeholder='パスワードを入力' autocomplete='current-password' required />
+          </div>
+
+          <button type='submit' class='primary-button'>ログイン</button>
+          <p id='login-error' class='error-message' aria-live='polite'></p>
+        </form>
+        <div class='create-user'>
+          <p>新しいユーザーを作成する</p>
+          <a href='/auth/create.html' class='text-link'>ユーザー登録画面へ</a>
+        </div>
+        <div class='demo-user'>
+          <span>デモユーザー</span>
+          <div class='demo-user-list'>
+            <button type='button' class='demo-button' data-username='admin' data-password='admin123'>admin / admin123</button>
+            <button type='button' class='demo-button' data-username='guest' data-password='guest123'>guest / guest123</button>
+            <button type='button' class='demo-button' data-username='test' data-password='123456'>test / 123456</button>
+          </div>
+        </div>
+      </section>
+
+      <section id='chat-panel' class='panel chat-panel hidden' aria-live='polite'>
+        <header class='chat-header'>
+          <div class='header-meta'>
+            <span class='status-dot status-online'></span>
+            <span id='connection-status'>接続中</span>
+          </div>
+
+          <div class='header-user'>
+            <span class='label'>ユーザー</span>
+            <strong id='current-user'>-</strong>
+          </div>
+
+          <button id='logout-button' type='button' class='secondary-button'>ログアウト</button>
+        </header>
+
+        <div class='chat-layout'>
+          <aside class='room-sidebar'>
+            <div class='sidebar-title-row'>
+              <h2>ルーム一覧</h2>
+            </div>
+            <select id='room-select' aria-label='チャットルーム選択'></select>
+            <div id='room-list' class='room-list' aria-label='ルーム一覧'></div>
+            <div class='room-summary'>
+              <p>現在のルーム</p>
+              <strong id='current-room-name'>General</strong>
+            </div>
+          </aside>
+
+          <section class='chat-main'>
+            <div class='message-topbar'>
+              <span>メッセージ</span>
+            </div>
+            <div id='message-list' class='message-list' aria-live='polite'></div>
+            <button id='scroll-to-latest' type='button' class='scroll-to-latest hidden'>最新メッセージへ</button>
+
+            <form id='message-form' class='message-form'>
+              <input id='message-input' type='text' maxlength='500' placeholder='メッセージを入力してください' autocomplete='off' />
+              <button type='submit' class='primary-button'>送信</button>
+            </form>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src='/js/chat/app.js'></script>
+  </body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "name": "chat-app-development",
+  "version": "1.0.0",
+  "description": "Realtime chat application with WebSocket, SQLite, and Docker support",
+  "main": "server.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "node --test"
+  },
+  "keywords": [
+    "chat",
+    "websocket",
+    "sqlite",
+    "node"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "express": "^5.3.0",
+    "express-session": "^1.19.0",
+    "ws": "^8.22.0"
+  }
+}

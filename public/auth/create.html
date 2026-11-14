@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang='ja'>
+  <head>
+    <meta charset='UTF-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+    <title>ユーザー登録 | Chat App</title>
+    <link rel='stylesheet' href='/style.css' />
+  </head>
+  <body>
+    <div class='page-bg'></div>
+    <main class='app-shell'>
+      <section class='panel login-panel auth-panel'>
+        <div class='brand-block'>
+          <div class='brand-badge'>C</div>
+          <div>
+            <p class='eyebrow'>Create Account</p>
+            <h1>ユーザー登録</h1>
+          </div>
+        </div>
+
+        <form id='create-user-form' class='login-form'>
+          <div class='field-group'>
+            <label for='new-username'>ユーザー名</label>
+            <input id='new-username' name='new-username' type='text' placeholder='例: newuser' autocomplete='username' required />
+          </div>
+
+          <div class='field-group'>
+            <label for='new-password'>パスワード</label>
+            <input id='new-password' name='new-password' type='password' placeholder='パスワードを入力' autocomplete='new-password' required />
+          </div>
+
+          <button type='submit' class='primary-button'>ユーザー作成</button>
+          <p id='create-user-error' class='error-message' aria-live='polite'></p>
+        </form>
+
+        <div class='auth-links'>
+          <a href='/' class='text-link'>ログイン画面へ戻る</a>
+        </div>
+      </section>
+    </main>
+
+    <script src='/js/auth/create.js'></script>
+  </body>
+</html>

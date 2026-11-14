@@ -1,0 +1,13 @@
+services:
+  chat-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: chat-app
+    ports:
+      - "3001:3001"
+    environment:
+      PORT: 3001
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
