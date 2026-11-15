@@ -1,4 +1,4 @@
-.PHONY: help install start dev test up down logs clean update restart refresh reset-db reset-logs
+.PHONY: help install start dev test up down logs clean update restart refresh reset-db reset-logs ensure-port-free
 
 help:
 	@printf "Usage:\n"
@@ -16,22 +16,42 @@ help:
 	@printf "  make reset-db   - SQLiteのデータを初期化（テーブルは保持）\n"
 	@printf "  make reset-logs - アプリのログファイルをリセット\n"
 
+ensure-port-free:
+	@set -e; \
+	if command -v fuser >/dev/null 2>&1; then \
+		if fuser 3001/tcp >/dev/null 2>&1; then \
+			echo "Port 3001 is occupied; stopping local processes..."; \
+			fuser -k 3001/tcp || true; \
+		fi; \
+	fi; \
+	if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx 'chat-app'; then \
+		echo "Stopping running chat-app container on port 3001..."; \
+		docker compose down --remove-orphans >/dev/null 2>&1 || docker stop chat-app >/dev/null 2>&1 || true; \
+	fi; \
+	sleep 1; \
+	if ss -lnt | grep -q ':3001 '; then \
+		echo "Port 3001 is still in use after cleanup."; \
+		echo "Check with: ss -lntp | grep 3001"; \
+		exit 1; \
+	fi
+
 install:
 	npm install
 
-start:
+start: ensure-port-free
 	npm start
 
-dev:
+dev: ensure-port-free
 	npm run dev
 
 test:
 	npm test
 
-up:
+up: ensure-port-free
 	docker compose up --build -d
 
-update:
+update: ensure-port-free
+	@echo "Rebuilding and restarting chat-app...";
 	docker compose up -d --no-deps --build chat-app
 
 restart:
@@ -40,7 +60,7 @@ restart:
 refresh: update
 
 reset-db:
-	node -e "const { db, initializeDatabase } = require('./db'); db.exec('BEGIN IMMEDIATE; DELETE FROM messages; DELETE FROM rooms; DELETE FROM users; DELETE FROM user_last_view; DELETE FROM sqlite_sequence WHERE name IN (\'users\', \'messages\'); COMMIT;'); initializeDatabase(); console.log('SQLite data reset complete. Tables preserved.');"
+	node -e "const { db, initializeDatabase } = require('./db'); db.exec('PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE; DELETE FROM messages; DELETE FROM user_last_view; DELETE FROM users; DELETE FROM rooms; DELETE FROM sqlite_sequence WHERE name IN (\'users\', \'messages\'); COMMIT; PRAGMA foreign_keys = ON;'); initializeDatabase(); console.log('SQLite data reset complete. Tables preserved.');"
 
 reset-logs:
 	@rm -f data/logs/auth.log data/logs/http.log data/logs/message.log data/logs/error.log

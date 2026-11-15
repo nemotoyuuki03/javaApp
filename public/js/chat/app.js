@@ -1,54 +1,28 @@
-const state = {
-  user: null,
-  rooms: [],
-  roomId: 'general',
-  socket: null,
-  lastView: { roomId: null, scrollPosition: 0 },
-  unreadCounts: {},
-};
-
+const state = new ChatState();
 const pendingScrollSave = { timer: null };
+const elements = ChatView.elements;
 
-const elements = {
-  loginPanel: document.getElementById('login-panel'),
-  chatPanel: document.getElementById('chat-panel'),
-  loginForm: document.getElementById('login-form'),
-  loginError: document.getElementById('login-error'),
-  currentUser: document.getElementById('current-user'),
-  roomSelect: document.getElementById('room-select'),
-  roomList: document.getElementById('room-list'),
-  currentRoomName: document.getElementById('current-room-name'),
-  messageList: document.getElementById('message-list'),
-  messageForm: document.getElementById('message-form'),
-  messageInput: document.getElementById('message-input'),
-  logoutButton: document.getElementById('logout-button'),
-  connectionStatus: document.getElementById('connection-status'),
-  demoButtons: document.querySelectorAll('.demo-button'),
-  scrollToLatestButton: document.getElementById('scroll-to-latest'),
-};
-
+// エラー表示を共通UIに転送する。
 function setError(message) {
-  elements.loginError.textContent = message || '';
+  ChatView.setError(message);
 }
 
+// ログイン画面を表示してフォームを見せる。
 function showLogin() {
-  elements.loginPanel.classList.remove('hidden');
-  elements.chatPanel.classList.add('hidden');
+  ChatView.showLogin();
 }
 
+// チャット画面を表示して現在ユーザー名を更新する。
 function showChat() {
-  elements.loginPanel.classList.add('hidden');
-  elements.chatPanel.classList.remove('hidden');
-  elements.currentUser.textContent = state.user ? state.user.username : '-';
+  ChatView.showChat(state.user ? state.user.username : '-');
 }
 
+// WebSocket接続状態をUIに反映する。
 function setConnectionStatus(connected) {
-  const dot = elements.connectionStatus.parentElement.querySelector('.status-dot');
-  elements.connectionStatus.textContent = connected ? '接続中' : '切断';
-  dot.classList.toggle('status-online', connected);
-  dot.classList.toggle('status-offline', !connected);
+  ChatView.setConnectionStatus(connected);
 }
 
+// 最後に見たスクロール位置をアプリ状態に保持する。
 function setLastView(roomId, scrollPosition) {
   state.lastView = {
     roomId: roomId || null,
@@ -56,6 +30,61 @@ function setLastView(roomId, scrollPosition) {
   };
 }
 
+// サーバーから未読数を取得して画面と状態を更新する。
+async function refreshUnreadCounts() {
+  if (!state.user) {
+    state.resetUnreadCounts();
+    ChatView.updateRoomList(state);
+    ChatView.refreshRoomSelect(state);
+    return;
+  }
+
+  try {
+    const data = await HttpClient.fetchJson('/api/unread-counts');
+    const nextCounts = {};
+    for (const room of state.rooms) {
+      nextCounts[room.id] = Number(data?.unreadCounts?.[room.id] || 0);
+    }
+    state.unreadCounts = nextCounts;
+  } catch (error) {
+    console.error('Unread counts refresh failed:', error);
+  }
+
+  ChatView.updateRoomList(state);
+  ChatView.refreshRoomSelect(state);
+}
+
+// ルームを開いたことをバックエンドに通知して未読数を再計算する。
+async function markRoomOpened(roomId) {
+  if (!state.user) {
+    return;
+  }
+
+  const normalizedRoomId = roomId || state.roomId;
+  if (!normalizedRoomId) {
+    return;
+  }
+
+  try {
+    const response = await HttpClient.fetchJson('/api/room-opened', {
+      method: 'POST',
+      body: JSON.stringify({ roomId: normalizedRoomId }),
+    });
+
+    if (response && response.roomOpened) {
+      state.lastView = {
+        roomId: normalizedRoomId,
+        scrollPosition: 0,
+      };
+    }
+
+    await refreshUnreadCounts();
+  } catch (error) {
+    console.error('Room open update failed:', error);
+  }
+}
+
+// 現在のスクロール位置をサーバー側の閲覧状態として保存する。
 async function saveLastView(roomId = state.roomId, scrollPosition = elements.messageList?.scrollTop || 0) {
   if (!state.user) {
     return;
@@ -66,7 +95,7 @@ async function saveLastView(roomId = state.roomId, scrollPosition = elements.mes
   setLastView(normalizedRoomId, normalizedScrollPosition);
 
   try {
-    await fetchJson('/api/last-view', {
+    await HttpClient.fetchJson('/api/last-view', {
       method: 'POST',
       body: JSON.stringify({ roomId: normalizedRoomId, scrollPosition: normalizedScrollPosition }),
     });
@@ -75,6 +104,7 @@ async function saveLastView(roomId = state.roomId, scrollPosition = elements.mes
   }
 }
 
+// スクロール位置を遅延保存して無駄な通信を減らす。
 function saveScrollPositionDebounced() {
   if (!state.user) {
     return;
@@ -87,29 +117,22 @@ function saveScrollPositionDebounced() {
   }, 200);
 }
 
+// 保存済みスクロール位置を元に画面位置を復元する。
 function restoreScrollPosition(scrollPosition = state.lastView.scrollPosition) {
-  if (!elements.messageList) {
-    return;
-  }
-
-  const safePosition = Number.isFinite(Number(scrollPosition)) ? Number(scrollPosition) : 0;
-  requestAnimationFrame(() => {
-    elements.messageList.scrollTop = Math.max(0, safePosition);
-  });
+  ChatView.restoreScrollPosition(scrollPosition);
 }
 
+// 表示中のルーム名を現在選択中の部屋に合わせて更新する。
 function updateRoomLabel() {
-  const selectedRoom = state.rooms.find((room) => room.id === state.roomId) || state.rooms[0];
-  elements.currentRoomName.textContent = selectedRoom ? selectedRoom.name : 'General';
+  ChatView.updateRoomLabel(state);
 }
 
+// メッセージがない場合の空状態を描画する。
 function renderEmptyState() {
-  const empty = document.createElement('div');
-  empty.className = 'message empty-state';
-  empty.textContent = 'まだメッセージがありません。最初の一言を送ってみましょう。';
-  elements.messageList.appendChild(empty);
+  ChatView.renderEmptyState();
 }
 
+// サーバーとブラウザのメッセージ形式差分を正規化する。
 function normalizeMessagePayload(message = {}) {
   const username = message.user ?? message.username ?? message.senderName ?? 'unknown';
   const createdAt = message.createdAt ?? message.created_at ?? new Date().toISOString();
@@ -121,62 +144,47 @@ function normalizeMessagePayload(message = {}) {
   };
 }
 
-async function fetchJson(url, options = {}) {
-  const response = await fetch(url, {
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
-    ...options,
-  });
-
-  const data = await response.json().catch(() => ({}));
-
-  if (response.status === 401) {
-    if (url === '/api/session' || url === '/api/last-view' || url === '/api/rooms' || url === '/api/history') {
-      return { ok: false, error: data.error || '未認証です。', user: null, lastView: null, rooms: [] };
-    }
-  }
-
-  if (!response.ok) {
-    throw new Error(data.error || 'リクエストに失敗しました。');
-  }
-  return data;
-}
-
+// ルーム一覧を状態に応じて描画し直す。
 function updateRoomList() {
-  if (!elements.roomList) {
-    return;
-  }
-
-  elements.roomList.innerHTML = '';
-  for (const room of state.rooms) {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = `room-item ${state.roomId === room.id ? 'active' : ''}`;
-    button.dataset.roomId = room.id;
-    button.innerHTML = `
-      <span class="room-name">${room.name}</span>
-      ${state.unreadCounts[room.id] ? `<span class="unread-badge">${state.unreadCounts[room.id]}</span>` : ''}
-    `;
-    button.addEventListener('click', () => {
-      selectRoom(room.id);
-    });
-    elements.roomList.appendChild(button);
-  }
+  ChatView.updateRoomList(state);
 }
 
+// ルーム選択ドロップダウンの内容を更新する。
 function refreshRoomSelect() {
-  if (!elements.roomSelect) {
+  ChatView.refreshRoomSelect(state);
+}
+
+// サーバーからの履歴を汎用のビュー関数に委譲する。
+function renderHistory(messages) {
+  ChatView.renderHistory(messages, state);
+}
+
+// 画面にメッセージを1件追加するためのラッパー関数。
+function appendMessage(message) {
+  ChatView.appendMessage(message, state.user?.username);
+}
+
+// WebSocket にJSONメッセージを送る共通関数。
+function sendSocketMessage(payload) {
+  if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+    console.warn('WebSocket is not connected yet.');
     return;
   }
 
-  elements.roomSelect.innerHTML = state.rooms
-    .map((room) => `<option value="${room.id}">${room.name}${state.unreadCounts[room.id] ? ` (${state.unreadCounts[room.id]})` : ''}</option>`)
-    .join('');
-
-  if (state.roomId) {
-    elements.roomSelect.value = state.roomId;
-  }
+  state.socket.send(JSON.stringify(payload));
 }
 
+// 画面の最新メッセージまでスクロールする。
+function scrollToLatestMessage() {
+  ChatView.scrollToLatestMessage();
+}
+
+// 最新メッセージ移動ボタンの表示状態を更新する。
+function updateLatestMessageButton() {
+  ChatView.updateLatestMessageButton();
+}
+
+// ルーム切替時に既読化・保存・再描画・Socket再joinをまとめて実行する。
 async function selectRoom(roomId) {
   if (!state.rooms.some((room) => room.id === roomId)) {
     return;
@@ -185,101 +193,56 @@ async function selectRoom(roomId) {
   const previousRoomId = state.roomId;
   const previousScroll = elements.messageList ? elements.messageList.scrollTop : 0;
 
+  // 現在の画面状態を新しいルームへ切り替える前に、以前のルームのスクロール位置を確保する。
   state.roomId = roomId;
-  state.unreadCounts[roomId] = 0;
+  state.markRoomAsRead(roomId);
   updateRoomLabel();
   refreshRoomSelect();
   updateRoomList();
 
+  // 別ルームから移動した場合だけ、前のルームのスクロール位置をバックエンドへ保存する。
   if (state.user && previousRoomId !== roomId) {
     await saveLastView(previousRoomId, previousScroll);
   }
 
+  // 新しいルームの閲覧時刻を0に戻して、ルーム開封時刻を更新する。
   setLastView(roomId, 0);
   await saveLastView(roomId, 0);
+  await markRoomOpened(roomId);
 
+  // WebSocket 側でも参加ルームを切り替えて、他のユーザーへ最新状態を反映する。
   if (state.socket && state.socket.readyState === WebSocket.OPEN) {
     sendSocketMessage({ type: 'join-room', roomId });
   }
 }
 
+// サーバーから部屋一覧を取得し、初期ルーム選択・未読数・表示状態をセットアップする。
 async function loadRooms() {
-  const data = await fetchJson('/api/rooms');
+  const data = await HttpClient.fetchJson('/api/rooms');
   state.rooms = data.rooms || [];
-
-  state.unreadCounts = {};
-  for (const room of state.rooms) {
-    state.unreadCounts[room.id] = 0;
-  }
+  state.initializeRoomStates();
+  state.resetUnreadCounts();
 
   refreshRoomSelect();
   updateRoomList();
 
+  // 最後に開いていた部屋が存在するならそこを優先し、なければ最初の部屋を選ぶ。
   const preferredRoomId = state.lastView.roomId && state.rooms.some((room) => room.id === state.lastView.roomId)
     ? state.lastView.roomId
     : state.rooms[0]?.id || 'general';
 
+  // 初期表示時には未読数を消し、開封時刻を更新して未読数を再計算する。
   state.roomId = preferredRoomId;
-  state.unreadCounts[preferredRoomId] = 0;
+  state.markRoomAsRead(preferredRoomId);
+  setLastView(preferredRoomId, 0);
+  await markRoomOpened(preferredRoomId);
+  await refreshUnreadCounts();
   elements.roomSelect.value = state.roomId;
   updateRoomLabel();
   updateRoomList();
 }
 
-function updateLatestMessageButton() {
-  if (!elements.messageList || !elements.scrollToLatestButton) {
-    return;
-  }
-
-  const isNearBottom = elements.messageList.scrollHeight - elements.messageList.scrollTop - elements.messageList.clientHeight < 120;
-  elements.scrollToLatestButton.classList.toggle('hidden', isNearBottom);
-}
-
-function scrollToLatestMessage() {
-  if (!elements.messageList) {
-    return;
-  }
-
-  elements.messageList.scrollTop = elements.messageList.scrollHeight;
-  updateLatestMessageButton();
-}
-
-function appendMessage(message) {
-  const normalized = normalizeMessagePayload(message);
-  const username = normalized.user;
-  const item = document.createElement('div');
-  item.className = `message ${username === state.user?.username ? 'mine' : ''}`;
-  item.innerHTML = `
-    <div class="message-header">
-      <span>${username}</span>
-      <span>${new Date(normalized.createdAt).toLocaleString('ja-JP')}</span>
-    </div>
-    <div class="message-content">${normalized.content}</div>
-  `;
-  elements.messageList.appendChild(item);
-  elements.messageList.scrollTop = elements.messageList.scrollHeight;
-  updateLatestMessageButton();
-}
-
-function renderHistory(messages = []) {
-  elements.messageList.innerHTML = '';
-  if (!messages.length) {
-    renderEmptyState();
-    updateLatestMessageButton();
-    return;
-  }
-
-  messages.forEach((message) => appendMessage(normalizeMessagePayload(message)));
-  restoreScrollPosition(state.lastView.roomId === state.roomId ? state.lastView.scrollPosition : 0);
-  updateLatestMessageButton();
-}
-
-function sendSocketMessage(payload) {
-  if (state.socket && state.socket.readyState === WebSocket.OPEN) {
-    state.socket.send(JSON.stringify(payload));
-  }
-}
-
+// WebSocket のイベントに応じて履歴・メッセージ受信・未読更新を分岐する。
 function connectSocket() {
   if (state.socket) {
     state.socket.close();
@@ -288,15 +251,18 @@ function connectSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   state.socket = new WebSocket(`${protocol}://${window.location.host}`);
 
+  // 接続時に現在のルームへ参加して、接続状態インジケータを有効化する。
   state.socket.addEventListener('open', () => {
     setConnectionStatus(true);
     sendSocketMessage({ type: 'join-room', roomId: state.roomId });
   });
 
+  // 切断時は UI の状態を切断扱いに戻す。
   state.socket.addEventListener('close', () => {
     setConnectionStatus(false);
   });
 
+  // 履歴とメッセージイベントを受けて、現在のルームか否かで処理を分ける。
   state.socket.addEventListener('message', (event) => {
     const data = JSON.parse(event.data);
 
@@ -305,14 +271,21 @@ function connectSocket() {
       return;
     }
 
+    // サーバーから未読数更新イベントが来たら、再ログインなしで状態を更新する。
+    if (data.type === 'unread-update') {
+      state.unreadCounts = { ...data.unreadCounts };
+      updateRoomList();
+      refreshRoomSelect();
+      return;
+    }
+
     if (data.type === 'message') {
       if (data.roomId === state.roomId) {
         appendMessage(normalizeMessagePayload(data));
       } else {
-        const currentCount = Number(state.unreadCounts[data.roomId] || 0) + 1;
-        state.unreadCounts[data.roomId] = currentCount;
-        refreshRoomSelect();
-        updateRoomList();
+        refreshUnreadCounts().catch((error) => {
+          console.error('Unread refresh after message failed:', error);
+        });
       }
       return;
     }
@@ -328,9 +301,11 @@ function connectSocket() {
   });
 }
 
+// セッション状態を確認し、ログイン済みならチャット画面を起動する。
 async function checkSession() {
   try {
     const response = await fetch('/api/session', {
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
     });
 
@@ -339,6 +314,7 @@ async function checkSession() {
       return;
     }
 
+    // HTTP エラー時はログイン画面に戻し、失敗した理由は握りつぶす。
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(data.error || 'セッション確認に失敗しました。');
@@ -349,6 +325,7 @@ async function checkSession() {
       return;
     }
 
+    // セッション情報が有効なら現在ユーザーと最後の閲覧状態を復元する。
     state.user = data.user;
     state.lastView = data.lastView || { roomId: null, scrollPosition: 0 };
     showChat();
@@ -359,23 +336,18 @@ async function checkSession() {
   }
 }
 
-function resetUnreadCounts() {
-  state.unreadCounts = {};
-  for (const room of state.rooms) {
-    state.unreadCounts[room.id] = 0;
-  }
-}
-
+// ログイン成功後にユーザー情報と閲覧状態を初期化し、チャット画面へ遷移する。
 async function loginWithCredentials(username, password) {
   setError('');
 
+  // 前回のユーザーと違う場合、状態をリセットして別ユーザーの未読情報が混ざらないようにする。
   const previousUserId = state.user?.id;
   if (previousUserId) {
     state.roomId = 'general';
     state.lastView = { roomId: null, scrollPosition: 0 };
   }
 
-  const data = await fetchJson('/api/login', {
+  const data = await HttpClient.fetchJson('/api/login', {
     method: 'POST',
     body: JSON.stringify({ username, password }),
   });
@@ -384,15 +356,17 @@ async function loginWithCredentials(username, password) {
     throw new Error(data?.error || 'ログインに失敗しました。');
   }
 
+  // 別ユーザーに切り替わった場合は部屋状態とスクロール位置を破棄する。
   const isDifferentUser = previousUserId && previousUserId !== data.user.id;
   if (isDifferentUser) {
     state.roomId = 'general';
     state.lastView = { roomId: null, scrollPosition: 0 };
   }
 
+  // 認証成功後に画面状態を入れ替えて、未読数だけをリセットする。
   state.user = data.user;
   state.lastView = data.lastView || { roomId: null, scrollPosition: 0 };
-  resetUnreadCounts();
+  state.resetUnreadCounts();
 
   showChat();
   await loadRooms();
@@ -403,8 +377,8 @@ for (const demoButton of elements.demoButtons) {
   demoButton.addEventListener('click', () => {
     const username = demoButton.dataset.username;
     const password = demoButton.dataset.password;
-    document.getElementById('username').value = username;
-    document.getElementById('password').value = password;
+    elements.usernameInput.value = username;
+    elements.passwordInput.value = password;
     loginWithCredentials(username, password).catch((error) => {
       setError(error.message);
     });
@@ -413,8 +387,8 @@ for (const demoButton of elements.demoButtons) {
 
 elements.loginForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const username = document.getElementById('username').value.trim();
-  const password = document.getElementById('password').value;
+  const username = elements.usernameInput.value.trim();
+  const password = elements.passwordInput.value;
 
   try {
     await loginWithCredentials(username, password);
@@ -443,7 +417,7 @@ elements.logoutButton.addEventListener('click', async () => {
       const currentScroll = elements.messageList ? elements.messageList.scrollTop : 0;
       await saveLastView(state.roomId, currentScroll);
     }
-    await fetchJson('/api/logout', { method: 'POST' });
+    await HttpClient.fetchJson('/api/logout', { method: 'POST' });
     state.user = null;
     if (state.socket) {
       state.socket.close();

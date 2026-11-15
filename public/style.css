@@ -5,6 +5,7 @@
   --panel-strong: #ffffff;
   --primary: #2f6df6;
   --primary-dark: #1d53d8;
+  --primary-soft: #edf3ff;
   --border: #dfe8f8;
   --text: #1a2433;
   --muted: #60708a;
@@ -288,13 +289,37 @@ select:focus {
   cursor: pointer;
 }
 
+.room-item.has-unread {
+  background: #fff7f7;
+  border-color: rgba(217, 82, 82, 0.4);
+}
+
 .room-item.active {
   background: var(--primary-soft);
   border-color: var(--primary-dark);
 }
 
+.room-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .room-name {
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unread-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #e53935;
+  box-shadow: 0 0 0 3px rgba(229, 57, 53, 0.15);
+  flex-shrink: 0;
 }
 
 .unread-badge {
@@ -307,8 +332,9 @@ select:focus {
   border-radius: 999px;
   background: #e53935;
   color: #fff;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 700;
+  box-shadow: 0 6px 18px rgba(229, 57, 53, 0.25);
 }
 
 .chat-main {

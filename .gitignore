@@ -5,3 +5,5 @@ data/*.db
 npm-debug.log*
 .DS_Store
 Thumbs.db
+data/chat.db-shm
+data/chat.db-wal

@@ -14,6 +14,9 @@ const {
   createUser,
   getUserLastView,
   saveUserLastView,
+  getUnreadCountsForUser,
+  getUserRoomLastOpened,
+  saveUserRoomLastOpened,
 } = require('./db');
 const logger = require('./logger');
 
@@ -24,6 +27,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 const sessions = new Map();
 const roomClients = new Map();
+const userClients = new Map();
 const PORT = process.env.PORT || 3001;
 
 app.use(express.json());
@@ -68,6 +72,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'サーバー内部エラーが発生しました。' });
 });
 
+// Cookie文字列をオブジェクト形式に変換してセッション情報を取り出す。
 function parseCookies(cookieHeader = '') {
   const cookies = {};
   cookieHeader.split(';').forEach((part) => {
@@ -86,6 +91,7 @@ function parseCookies(cookieHeader = '') {
   return cookies;
 }
 
+// Cookieからセッション情報を見てログイン中ユーザーを解決する。
 function getSessionUserFromRequest(req) {
   const cookies = parseCookies(req.headers.cookie || '');
   const token = cookies.chat_session;
@@ -103,6 +109,7 @@ function getSessionUserFromRequest(req) {
   return user;
 }
 
+// 認証済みユーザーだけがアクセスできる API を制御する。
 function requireAuth(req, res, next) {
   const user = getSessionUserFromRequest(req);
   if (!user) {
@@ -138,17 +145,8 @@ app.get('/api/session', (req, res) => {
   return res.json({ user, lastView });
 });
 
-app.get('/api/last-view', requireAuth, (req, res) => {
-  const lastView = getUserLastView(req.user.id);
-  return res.json(lastView);
-});
-
-app.post('/api/last-view', requireAuth, (req, res) => {
-  const roomId = String(req.body.roomId || '').trim() || null;
-  const scrollPosition = Number(req.body.scrollPosition || 0);
-
-  const lastView = saveUserLastView(req.user.id, roomId, scrollPosition);
-  return res.json({ success: true, lastView });
+app.get('/api/unread-counts', requireAuth, (req, res) => {
+  return res.json({ unreadCounts: getUnreadCountsForUser(req.user.id) });
 });
 
 app.post('/api/login', (req, res) => {
@@ -209,16 +207,42 @@ app.get('/api/history', requireAuth, (req, res) => {
   return res.json({ messages: getRoomMessages(roomId) });
 });
 
+app.post('/api/room-opened', requireAuth, (req, res) => {
+  const roomId = String(req.body.roomId || '').trim() || null;
+  const openedAt = new Date().toISOString();
+
+  if (!roomId) {
+    return res.status(400).json({ error: 'roomId が必要です。' });
+  }
+
+  const result = saveUserRoomLastOpened(req.user.id, roomId, openedAt);
+  return res.json({ success: true, roomOpened: result });
+});
+
+app.post('/api/last-view', requireAuth, (req, res) => {
+  const roomId = String(req.body.roomId || '').trim() || null;
+  const scrollPosition = Number.isFinite(Number(req.body.scrollPosition)) ? Number(req.body.scrollPosition) : 0;
+
+  if (!roomId) {
+    return res.status(400).json({ error: 'roomId が必要です。' });
+  }
+
+  const result = saveUserLastView(req.user.id, roomId, scrollPosition, new Date().toISOString());
+  return res.json({ success: true, lastView: result });
+});
+
 app.get('/health', (_req, res) => {
   return res.json({ ok: true, status: 'healthy' });
 });
 
+// ルームごとに接続中クライアントの集合を持ち、同じ部屋へ一括配信できるようにする。
 function ensureRoom(roomId) {
   if (!roomClients.has(roomId)) {
     roomClients.set(roomId, new Set());
   }
 }
 
+// 指定 WebSocket をそのルームから離脱させ、空になった部屋を削除する。
 function leaveRoom(ws) {
   if (!ws.roomId) {
     return;
@@ -234,12 +258,14 @@ function leaveRoom(ws) {
   ws.roomId = null;
 }
 
+// ルームへ所属させ、既存の履歴を送ってそのルームでチャットを開始させる。
 function joinRoom(ws, roomId) {
   if (!roomId || typeof roomId !== 'string') {
     logger.auth.warn('Invalid room join request', { roomId, userId: ws.user?.id });
     return;
   }
 
+  // ルームを切り替えるときは前の部屋から離脱して新しい参加状態を作る。
   leaveRoom(ws);
   ensureRoom(roomId);
   roomClients.get(roomId).add(ws);
@@ -252,6 +278,7 @@ function joinRoom(ws, roomId) {
     clientCount: roomClients.get(roomId)?.size || 0,
   });
 
+  // その部屋の履歴を返して、画面が即座に会話内容を見られるようにする。
   const history = getRoomMessages(roomId);
   ws.send(JSON.stringify({ type: 'history', roomId, messages: history }));
   logger.message.info('History sent to client', {
@@ -261,6 +288,7 @@ function joinRoom(ws, roomId) {
   });
 }
 
+// 1つの部屋に参加している全クライアントへメッセージを配送する。
 function broadcastToRoom(roomId, payload) {
   ensureRoom(roomId);
   const message = JSON.stringify(payload);
@@ -278,6 +306,59 @@ function broadcastToRoom(roomId, payload) {
   });
 }
 
+// WebSocket 接続ごとにユーザーと socket の対応を保持し、未読数更新を個別に配信できるようにする。
+function registerUserSocket(ws, userId) {
+  if (!userId) {
+    return;
+  }
+
+  if (!userClients.has(userId)) {
+    userClients.set(userId, new Set());
+  }
+
+  userClients.get(userId).add(ws);
+}
+
+// WebSocket 切断時にユーザー別の接続一覧からこの socket を外す。
+function unregisterUserSocket(ws, userId) {
+  if (!userId || !userClients.has(userId)) {
+    return;
+  }
+
+  const clients = userClients.get(userId);
+  clients.delete(ws);
+  if (clients.size === 0) {
+    userClients.delete(userId);
+  }
+}
+
+// 指定ユーザーの現在の未読数を全タブへ配信し、ログイン直後の状態更新を即時に反映する。
+function broadcastUnreadCountsToUser(userId) {
+  if (!userId || !userClients.has(userId)) {
+    return;
+  }
+
+  const unreadCounts = getUnreadCountsForUser(userId);
+  const payload = {
+    type: 'unread-update',
+    unreadCounts,
+  };
+
+  const message = JSON.stringify(payload);
+  for (const client of userClients.get(userId)) {
+    if (client.readyState === 1) {
+      client.send(message);
+    }
+  }
+}
+
+// 接続中の全ユーザーに未読数更新を同時に配信する。
+function broadcastUnreadCountsToAllConnectedUsers() {
+  for (const userId of userClients.keys()) {
+    broadcastUnreadCountsToUser(userId);
+  }
+}
+
 wss.on('connection', (ws, req) => {
   const cookies = parseCookies(req.headers.cookie || '');
   const token = cookies.chat_session;
@@ -291,6 +372,7 @@ wss.on('connection', (ws, req) => {
 
   ws.user = { id: session.userId, username: session.username };
   ws.roomId = null;
+  registerUserSocket(ws, ws.user.id);
 
   logger.auth.info('WebSocket connected', {
     userId: session.userId,
@@ -342,7 +424,9 @@ wss.on('connection', (ws, req) => {
           messageId: saved.id,
         });
 
+        // 部屋内の会話を送信したあと、未読数の更新を全接続ユーザーへ流して内部状態を更新する。
         broadcastToRoom(roomId, payload);
+        broadcastUnreadCountsToAllConnectedUsers();
         return;
       }
 
@@ -375,6 +459,7 @@ wss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     leaveRoom(ws);
+    unregisterUserSocket(ws, ws.user?.id);
     logger.auth.info('WebSocket disconnected', {
       userId: ws.user?.id,
       username: ws.user?.username,
